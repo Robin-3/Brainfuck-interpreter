@@ -2,28 +2,20 @@ use super::error::InterpreterError;
 
 pub type Commands = Vec<Command>;
 
-// Enum to represent the Brainfuck language commands
-#[derive(Clone, PartialEq, Debug)]
-pub enum Command {
+enum CommandClassic {
     Increase,
     Decrease,
     Left,
     Right,
     Input,
     Output,
-    OpenLoop(Option<usize>),
-    ClosedLoop(Option<usize>),
-    Add(u8),
-    Move(u16),
-    ToLeftLoop,
-    ToRightLoop,
-    ResetCell,
+    OpenLoop,
+    ClosedLoop,
 }
 
-impl Command {
-    // Generate tokens from Brainfuck code
-    pub fn code_to_tokens(code: String) -> Result<Commands, InterpreterError> {
-        let mut tokens: Commands = Vec::with_capacity(code.len());
+impl CommandClassic {
+    pub fn code_to_tokens(code: String) -> Result<Vec<CommandClassic>, InterpreterError> {
+        let mut tokens = Vec::with_capacity(code.len());
         for c in code.chars() {
             // Match each character to its corresponding Brainfuck command
             match c {
@@ -33,11 +25,56 @@ impl Command {
                 '>' => tokens.push(Self::Right),
                 ',' => tokens.push(Self::Input),
                 '.' => tokens.push(Self::Output),
-                '[' => tokens.push(Self::OpenLoop(None)),
-                ']' => tokens.push(Self::ClosedLoop(None)),
+                '[' => tokens.push(Self::OpenLoop),
+                ']' => tokens.push(Self::ClosedLoop),
                 char => return Err(InterpreterError::InstruccionUnknown(char)),
             }
         }
+
+        Ok(tokens)
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub enum BufferOptions {
+    Input,
+    Output,
+}
+
+#[derive(Clone, PartialEq)]
+pub enum LoopOptions {
+    ResetCell,
+    ToLeft,
+    ToRight,
+    PointerStart(Option<usize>),
+    PointerEnd(Option<usize>),
+}
+
+// Enum to represent the Brainfuck language commands
+#[derive(Clone, PartialEq)]
+pub enum Command {
+    Add(u8),
+    Move(u16),
+    Buffer(BufferOptions),
+    Loop(LoopOptions),
+}
+
+impl Command {
+    // Generate tokens from Brainfuck code
+    pub fn code_to_tokens(code: String) -> Result<Commands, InterpreterError> {
+        let mut tokens: Commands = CommandClassic::code_to_tokens(code)?
+            .iter()
+            .map(|command| match command {
+                CommandClassic::Increase => Self::Add(1),
+                CommandClassic::Decrease => Self::Add(u8::MAX),
+                CommandClassic::Left => Self::Move(u16::MAX),
+                CommandClassic::Right => Self::Move(1),
+                CommandClassic::Input => Self::Buffer(BufferOptions::Input),
+                CommandClassic::Output => Self::Buffer(BufferOptions::Output),
+                CommandClassic::OpenLoop => Self::Loop(LoopOptions::PointerStart(None)),
+                CommandClassic::ClosedLoop => Self::Loop(LoopOptions::PointerEnd(None)),
+            })
+            .collect();
 
         tokens = Self::add_advanced_tokens(&tokens.clone());
 
@@ -54,28 +91,27 @@ impl Command {
 
             match token {
                 Some(command) => match command {
-                    Self::Increase | Self::Decrease => {
+                    Self::Add(_) => {
                         let (value, new_index) = Self::add_token(commands, index);
                         tokens.push(Self::Add(value));
                         index = new_index;
                         continue;
                     }
-                    Self::Left | Self::Right => {
+                    Self::Move(_) => {
                         let (value, new_index) = Self::move_token(commands, index);
                         tokens.push(Self::Move(value));
                         index = new_index;
                         continue;
                     }
-                    Self::OpenLoop(_) => match Self::loop_token(commands, index) {
-                        Some(token) => {
-                            tokens.push(token);
-                            index += 2;
-                        }
-                        None => {
-                            tokens.push(Self::OpenLoop(None));
-                        }
-                    },
-                    Self::ClosedLoop(_) => tokens.push(Self::ClosedLoop(None)),
+                    Self::Loop(LoopOptions::PointerStart(_)) => {
+                        let (value, new_index) = Self::loop_token(commands, index);
+                        tokens.push(value);
+                        index = new_index;
+                        continue;
+                    }
+                    Self::Loop(LoopOptions::PointerEnd(_)) => {
+                        tokens.push(Self::Loop(LoopOptions::PointerEnd(None)))
+                    }
                     command => tokens.push(command.clone()),
                 },
                 None => break,
@@ -91,12 +127,8 @@ impl Command {
         let mut counter = 0u8;
         let mut end = start;
 
-        loop {
-            match commands.get(end) {
-                Some(Self::Increase) => counter = counter.wrapping_add(1),
-                Some(Self::Decrease) => counter = counter.wrapping_sub(1),
-                _ => break,
-            }
+        while let Some(Self::Add(value)) = commands.get(end) {
+            counter = counter.wrapping_add(*value);
             end += 1;
         }
 
@@ -107,42 +139,39 @@ impl Command {
         let mut counter = 0u16;
         let mut end = start;
 
-        loop {
-            match commands.get(end) {
-                Some(Self::Left) => counter = counter.wrapping_sub(1),
-                Some(Self::Right) => counter = counter.wrapping_add(1),
-                _ => break,
-            }
+        while let Some(Self::Move(pointer)) = commands.get(end) {
+            counter = counter.wrapping_add(*pointer);
             end += 1;
         }
 
         (counter, end)
     }
 
-    fn loop_token(commands: &Commands, start: usize) -> Option<Self> {
+    fn loop_token(commands: &Commands, start: usize) -> (Self, usize) {
         match commands.get(start + 2) {
-            Some(Self::ClosedLoop(_)) => match commands.get(start + 1) {
-                Some(Self::Increase)
-                | Some(Self::Decrease)
-                | Some(Self::Add(1))
-                | Some(Self::Add(u8::MAX)) => Some(Self::ResetCell),
-                Some(Self::Left) => Some(Self::ToLeftLoop),
-                Some(Self::Right) => Some(Self::ToRightLoop),
-                _ => None,
+            Some(Self::Loop(LoopOptions::PointerEnd(_))) => match commands.get(start + 1) {
+                Some(Self::Add(1)) | Some(Self::Add(u8::MAX)) => {
+                    (Self::Loop(LoopOptions::ResetCell), start + 3)
+                }
+                Some(Self::Move(1)) => (Self::Loop(LoopOptions::ToRight), start + 3),
+                Some(Self::Move(u16::MAX)) => (Self::Loop(LoopOptions::ToLeft), start + 3),
+                _ => (Self::Loop(LoopOptions::PointerStart(None)), start + 1),
             },
-            _ => None,
+            _ => (Self::Loop(LoopOptions::PointerStart(None)), start + 1),
         }
     }
 
     fn loop_conection(commands: &Commands) -> Result<Commands, InterpreterError> {
-        let mut open_loop: Vec<usize> =
-            Vec::with_capacity(Self::token_counter(commands, Self::OpenLoop(None)));
+        let mut open_loop: Vec<usize> = Vec::with_capacity(Self::token_counter(
+            commands,
+            Self::Loop(LoopOptions::PointerStart(None)),
+        ));
         let mut loops: Vec<(usize, usize)> = Vec::with_capacity(open_loop.capacity());
 
         for (index, token) in commands.iter().enumerate() {
             match token {
-                Self::OpenLoop(_) => open_loop.push(index),
-                Self::ClosedLoop(_) => match open_loop.pop() {
+                Self::Loop(LoopOptions::PointerStart(_)) => open_loop.push(index),
+                Self::Loop(LoopOptions::PointerEnd(_)) => match open_loop.pop() {
                     Some(open_index) => loops.push((open_index, index)),
                     None => return Err(InterpreterError::MalformedClosedLoop(index + 1)),
                 },
@@ -156,8 +185,8 @@ impl Command {
 
         let mut commands = commands.clone();
         while let Some((open_loop, closed_loop)) = loops.pop() {
-            commands[open_loop] = Self::OpenLoop(Some(closed_loop));
-            commands[closed_loop] = Self::ClosedLoop(Some(open_loop));
+            commands[open_loop] = Self::Loop(LoopOptions::PointerStart(Some(closed_loop)));
+            commands[closed_loop] = Self::Loop(LoopOptions::PointerEnd(Some(open_loop)));
         }
 
         Ok(commands)

@@ -1,5 +1,5 @@
 use super::{
-    command::{Command, Commands},
+    command::{BufferOptions, Command, Commands, LoopOptions},
     error::InterpreterError,
 };
 use std::cell::OnceCell;
@@ -48,26 +48,20 @@ impl Interpreter {
                 let mut memory_pointer = 0usize;
                 let mut output: Data =
                     // It is an initial value; the true one is unknown because it could be within a loop, hence it could be greater (if it repeats any loop) or smaller (if it didn't enter any loop).
-                    Vec::with_capacity(Command::token_counter(tokens, Command::Output));
+                    Vec::with_capacity(Command::token_counter(tokens, Command::Buffer(BufferOptions::Output)));
                 let mut token_index = 0usize;
                 let mut args: Option<Data> = self.args.get().cloned();
 
                 while let Some(token) = tokens.get(token_index) {
                     // Match each command and perform the corresponding operation
                     match token {
-                        Command::Increase => {
-                            memory[memory_pointer] = memory[memory_pointer].wrapping_add(1)
+                        Command::Add(increment) => {
+                            memory[memory_pointer] = memory[memory_pointer].wrapping_add(*increment)
                         }
-                        Command::Decrease => {
-                            memory[memory_pointer] = memory[memory_pointer].wrapping_sub(1)
+                        Command::Move(pointer) => {
+                            memory_pointer = (memory_pointer as u16).wrapping_add(*pointer) as usize
                         }
-                        Command::Left => {
-                            memory_pointer = (memory_pointer as u16).wrapping_sub(1) as usize
-                        }
-                        Command::Right => {
-                            memory_pointer = (memory_pointer as u16).wrapping_add(1) as usize
-                        }
-                        Command::Input => match args.as_mut() {
+                        Command::Buffer(BufferOptions::Input) => match args.as_mut() {
                             Some(bf_args) => match bf_args.pop() {
                                 Some(value) => memory[memory_pointer] = value,
                                 None => {
@@ -77,39 +71,36 @@ impl Interpreter {
                             },
                             None => return Err(InterpreterError::MissingArgs),
                         },
-                        Command::Output => output.push(memory[memory_pointer]),
-                        Command::OpenLoop(None) | Command::ClosedLoop(None) => {
+                        Command::Buffer(BufferOptions::Output) => {
+                            output.push(memory[memory_pointer])
+                        }
+                        Command::Loop(LoopOptions::PointerStart(None))
+                        | Command::Loop(LoopOptions::PointerEnd(None)) => {
                             return Err(InterpreterError::UnconnectedLoops)
                         }
-                        Command::OpenLoop(Some(pointer)) => {
-                            if memory[memory_pointer] == 0 {
-                                token_index = *pointer;
-                            }
-                        }
-                        Command::ClosedLoop(Some(pointer)) => {
-                            if memory[memory_pointer] != 0 {
-                                token_index = *pointer;
-                            }
-                        }
-                        Command::Add(increment) => {
-                            memory[memory_pointer] = memory[memory_pointer].wrapping_add(*increment)
-                        }
-                        Command::Move(pointer) => {
-                            memory_pointer = (memory_pointer as u16).wrapping_add(*pointer) as usize
-                        }
-                        Command::ToLeftLoop => loop {
-                            if memory[memory_pointer] == 0 {
-                                break;
-                            }
-                            memory_pointer = (memory_pointer as u16).wrapping_sub(1) as usize;
-                        },
-                        Command::ToRightLoop => loop {
+                        Command::Loop(LoopOptions::ResetCell) => memory[memory_pointer] = 0,
+                        Command::Loop(LoopOptions::ToRight) => loop {
                             if memory[memory_pointer] == 0 {
                                 break;
                             }
                             memory_pointer = (memory_pointer as u16).wrapping_add(1) as usize;
                         },
-                        Command::ResetCell => memory[memory_pointer] = 0,
+                        Command::Loop(LoopOptions::ToLeft) => loop {
+                            if memory[memory_pointer] == 0 {
+                                break;
+                            }
+                            memory_pointer = (memory_pointer as u16).wrapping_sub(1) as usize;
+                        },
+                        Command::Loop(LoopOptions::PointerStart(Some(pointer))) => {
+                            if memory[memory_pointer] == 0 {
+                                token_index = *pointer;
+                            }
+                        }
+                        Command::Loop(LoopOptions::PointerEnd(Some(pointer))) => {
+                            if memory[memory_pointer] != 0 {
+                                token_index = *pointer;
+                            }
+                        }
                     }
 
                     token_index += 1;
