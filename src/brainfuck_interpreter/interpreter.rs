@@ -74,29 +74,29 @@ impl Interpreter {
                         Command::Buffer(BufferOptions::Output) => {
                             output.push(memory[memory_pointer])
                         }
-                        Command::Loop(LoopOptions::PointerStart(None))
-                        | Command::Loop(LoopOptions::PointerEnd(None)) => {
+                        Command::Loop(LoopOptions::PointerStart(None), _)
+                        | Command::Loop(LoopOptions::PointerEnd(None), _) => {
                             return Err(InterpreterError::UnconnectedLoops)
                         }
-                        Command::Loop(LoopOptions::ResetCell) => memory[memory_pointer] = 0,
-                        Command::Loop(LoopOptions::ToRight) => loop {
+                        Command::Loop(LoopOptions::ResetCell, _) => memory[memory_pointer] = 0,
+                        Command::Loop(LoopOptions::ToRight, _) => loop {
                             if memory[memory_pointer] == 0 {
                                 break;
                             }
                             memory_pointer = (memory_pointer as u16).wrapping_add(1) as usize;
                         },
-                        Command::Loop(LoopOptions::ToLeft) => loop {
+                        Command::Loop(LoopOptions::ToLeft, _) => loop {
                             if memory[memory_pointer] == 0 {
                                 break;
                             }
                             memory_pointer = (memory_pointer as u16).wrapping_sub(1) as usize;
                         },
-                        Command::Loop(LoopOptions::PointerStart(Some(pointer))) => {
+                        Command::Loop(LoopOptions::PointerStart(Some(pointer)), _) => {
                             if memory[memory_pointer] == 0 {
                                 token_index = *pointer;
                             }
                         }
-                        Command::Loop(LoopOptions::PointerEnd(Some(pointer))) => {
+                        Command::Loop(LoopOptions::PointerEnd(Some(pointer)), _) => {
                             if memory[memory_pointer] != 0 {
                                 token_index = *pointer;
                             }

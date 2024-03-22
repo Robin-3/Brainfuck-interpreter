@@ -9,14 +9,14 @@ enum CommandClassic {
     Right,
     Input,
     Output,
-    OpenLoop,
-    ClosedLoop,
+    OpenLoop(usize),   // index_file
+    ClosedLoop(usize), // index_file
 }
 
 impl CommandClassic {
     pub fn code_to_tokens(code: String) -> Result<Vec<CommandClassic>, InterpreterError> {
         let mut tokens = Vec::with_capacity(code.len());
-        for c in code.chars() {
+        for (index_file, c) in code.chars().enumerate() {
             // Match each character to its corresponding Brainfuck command
             match c {
                 '+' => tokens.push(Self::Increase),
@@ -25,8 +25,8 @@ impl CommandClassic {
                 '>' => tokens.push(Self::Right),
                 ',' => tokens.push(Self::Input),
                 '.' => tokens.push(Self::Output),
-                '[' => tokens.push(Self::OpenLoop),
-                ']' => tokens.push(Self::ClosedLoop),
+                '[' => tokens.push(Self::OpenLoop(index_file + 1)),
+                ']' => tokens.push(Self::ClosedLoop(index_file + 1)),
                 char => return Err(InterpreterError::InstruccionUnknown(char)),
             }
         }
@@ -43,11 +43,14 @@ pub enum BufferOptions {
 
 #[derive(Clone, PartialEq)]
 pub enum LoopOptions {
-    ResetCell,
-    ToLeft,
-    ToRight,
-    PointerStart(Option<usize>),
-    PointerEnd(Option<usize>),
+    ResetCell, // [-], [+]: Cell to 0
+    // [Add(n)], n != 1 | u8::MAX
+    ToLeft,  // [<]: Pointer to memory with 0
+    ToRight, // [>]: Pointer to memory with 0
+    // [Move(n)], n != 1 | u16::MAX
+    // [Add(n) Move(m) Add(l) Move(-(m+1))] | [Move(m) Add(l) Move(-(m+1)) Add(n)]: Cell to 0 and Cell in position m Set at n+l
+    PointerStart(Option<usize>), // if a connection exists with the PointerEnd
+    PointerEnd(Option<usize>),   // if a connection exists with the PointerStart
 }
 
 // Enum to represent the Brainfuck language commands
@@ -56,7 +59,7 @@ pub enum Command {
     Add(u8),
     Move(u16),
     Buffer(BufferOptions),
-    Loop(LoopOptions),
+    Loop(LoopOptions, usize), // loop function, index_file
 }
 
 impl Command {
@@ -71,8 +74,8 @@ impl Command {
                 CommandClassic::Right => Self::Move(1),
                 CommandClassic::Input => Self::Buffer(BufferOptions::Input),
                 CommandClassic::Output => Self::Buffer(BufferOptions::Output),
-                CommandClassic::OpenLoop => Self::Loop(LoopOptions::PointerStart(None)),
-                CommandClassic::ClosedLoop => Self::Loop(LoopOptions::PointerEnd(None)),
+                CommandClassic::OpenLoop(i) => Self::Loop(LoopOptions::PointerStart(None), *i),
+                CommandClassic::ClosedLoop(i) => Self::Loop(LoopOptions::PointerEnd(None), *i),
             })
             .collect();
 
@@ -103,14 +106,14 @@ impl Command {
                         index = new_index;
                         continue;
                     }
-                    Self::Loop(LoopOptions::PointerStart(_)) => {
-                        let (value, new_index) = Self::loop_token(commands, index);
+                    Self::Loop(LoopOptions::PointerStart(_), i) => {
+                        let (value, new_index) = Self::loop_token(commands, index, *i);
                         tokens.push(value);
                         index = new_index;
                         continue;
                     }
-                    Self::Loop(LoopOptions::PointerEnd(_)) => {
-                        tokens.push(Self::Loop(LoopOptions::PointerEnd(None)))
+                    Self::Loop(LoopOptions::PointerEnd(_), i) => {
+                        tokens.push(Self::Loop(LoopOptions::PointerEnd(None), *i))
                     }
                     command => tokens.push(command.clone()),
                 },
@@ -147,56 +150,80 @@ impl Command {
         (counter, end)
     }
 
-    fn loop_token(commands: &Commands, start: usize) -> (Self, usize) {
+    fn loop_token(commands: &Commands, start: usize, index_file: usize) -> (Self, usize) {
         match commands.get(start + 2) {
-            Some(Self::Loop(LoopOptions::PointerEnd(_))) => match commands.get(start + 1) {
+            Some(Self::Loop(LoopOptions::PointerEnd(_), _)) => match commands.get(start + 1) {
                 Some(Self::Add(1)) | Some(Self::Add(u8::MAX)) => {
-                    (Self::Loop(LoopOptions::ResetCell), start + 3)
+                    (Self::Loop(LoopOptions::ResetCell, index_file), start + 3)
                 }
-                Some(Self::Move(1)) => (Self::Loop(LoopOptions::ToRight), start + 3),
-                Some(Self::Move(u16::MAX)) => (Self::Loop(LoopOptions::ToLeft), start + 3),
-                _ => (Self::Loop(LoopOptions::PointerStart(None)), start + 1),
+                Some(Self::Move(1)) => (Self::Loop(LoopOptions::ToRight, index_file), start + 3),
+                Some(Self::Move(u16::MAX)) => {
+                    (Self::Loop(LoopOptions::ToLeft, index_file), start + 3)
+                }
+                _ => (
+                    Self::Loop(LoopOptions::PointerStart(None), index_file),
+                    start + 1,
+                ),
             },
-            _ => (Self::Loop(LoopOptions::PointerStart(None)), start + 1),
+            _ => (
+                Self::Loop(LoopOptions::PointerStart(None), index_file),
+                start + 1,
+            ),
         }
     }
 
     fn loop_conection(commands: &Commands) -> Result<Commands, InterpreterError> {
-        let mut open_loop: Vec<usize> = Vec::with_capacity(Self::token_counter(
+        let mut open_loop: Vec<(usize, usize)> = Vec::with_capacity(Self::token_counter(
             commands,
-            Self::Loop(LoopOptions::PointerStart(None)),
+            Self::Loop(LoopOptions::PointerStart(None), 0),
         ));
-        let mut loops: Vec<(usize, usize)> = Vec::with_capacity(open_loop.capacity());
+        let mut loops: Vec<((usize, usize), (usize, usize))> =
+            Vec::with_capacity(open_loop.capacity());
 
         for (index, token) in commands.iter().enumerate() {
             match token {
-                Self::Loop(LoopOptions::PointerStart(_)) => open_loop.push(index),
-                Self::Loop(LoopOptions::PointerEnd(_)) => match open_loop.pop() {
-                    Some(open_index) => loops.push((open_index, index)),
-                    None => return Err(InterpreterError::MalformedClosedLoop(index + 1)),
+                Self::Loop(LoopOptions::PointerStart(_), i) => open_loop.push((index, *i)),
+                Self::Loop(LoopOptions::PointerEnd(_), i) => match open_loop.pop() {
+                    Some(open_index) => loops.push((open_index, (index, *i))),
+                    None => return Err(InterpreterError::MalformedClosedLoop(*i)),
                 },
                 _ => continue,
             }
         }
 
         if !open_loop.is_empty() {
-            return Err(InterpreterError::MalformedOpenLoop(open_loop[0] + 1));
+            return Err(InterpreterError::MalformedOpenLoop(open_loop[0].1));
         }
 
         let mut commands = commands.clone();
         while let Some((open_loop, closed_loop)) = loops.pop() {
-            commands[open_loop] = Self::Loop(LoopOptions::PointerStart(Some(closed_loop)));
-            commands[closed_loop] = Self::Loop(LoopOptions::PointerEnd(Some(open_loop)));
+            commands[open_loop.0] =
+                Self::Loop(LoopOptions::PointerStart(Some(closed_loop.0)), open_loop.1);
+            commands[closed_loop.0] =
+                Self::Loop(LoopOptions::PointerEnd(Some(open_loop.0)), closed_loop.1);
         }
 
         Ok(commands)
     }
 
-    pub fn token_counter(commands: &Commands, token: Self) -> usize {
+    pub fn token_counter(commands: &[Self], token: Self) -> usize {
         let mut counter = 0usize;
+
         for c in commands.iter() {
-            if token == *c {
-                counter += 1
+            match (c, token.clone()) {
+                (
+                    Self::Loop(LoopOptions::PointerStart(_), _),
+                    Self::Loop(LoopOptions::PointerStart(_), _),
+                ) => counter += 1,
+                (
+                    Self::Loop(LoopOptions::PointerEnd(_), _),
+                    Self::Loop(LoopOptions::PointerEnd(_), _),
+                ) => counter += 1,
+                _ => {
+                    if *c == token {
+                        counter += 1;
+                    }
+                }
             }
         }
 
