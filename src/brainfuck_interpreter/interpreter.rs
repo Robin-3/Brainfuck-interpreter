@@ -104,18 +104,26 @@ impl Interpreter {
 
                             memory[memory_pointer] = 0;
                         }
-                        Command::Loop(LoopOptions::ToRight, _) => loop {
-                            if memory[memory_pointer] == 0 {
-                                break;
+                        Command::Loop(LoopOptions::MoveToCell(pointer), index_file) => {
+                            let is_not_empty = memory.iter().all(|&m| m != 0);
+                            if is_not_empty {
+                                return Err(InterpreterError::InfinityLoopMemoryFull(*index_file));
                             }
-                            memory_pointer = (memory_pointer as u16).wrapping_add(1) as usize;
-                        },
-                        Command::Loop(LoopOptions::ToLeft, _) => loop {
-                            if memory[memory_pointer] == 0 {
-                                break;
+                            let memory_pointer_start = memory_pointer;
+                            loop {
+                                if memory[memory_pointer] == 0 {
+                                    break;
+                                }
+                                memory_pointer =
+                                    (memory_pointer as u16).wrapping_add(*pointer) as usize;
+                                if memory_pointer == memory_pointer_start {
+                                    return Err(InterpreterError::InfinityLoopMovement(
+                                        *index_file,
+                                        *pointer,
+                                    ));
+                                }
                             }
-                            memory_pointer = (memory_pointer as u16).wrapping_sub(1) as usize;
-                        },
+                        }
                         Command::Loop(LoopOptions::PointerStart(Some(pointer)), _) => {
                             if memory[memory_pointer] == 0 {
                                 token_index = *pointer;

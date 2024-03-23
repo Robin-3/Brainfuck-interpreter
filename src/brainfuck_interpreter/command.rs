@@ -45,9 +45,7 @@ pub enum BufferOptions {
 pub enum LoopOptions {
     Comment,          // [] Comment: unimplemented
     AddToReset(bool), // [n], n%2==1 || n%2==0&&current_value%2==0: cell to 0
-    ToLeft,           // [<]: Pointer to memory with 0
-    ToRight,          // [>]: Pointer to memory with 0
-    // [Move(n)], n != 1 | u16::MAX
+    MoveToCell(u16),  // [Move(n)]
     // [Add(n) Move(m) Add(l) Move(-(m+1))] | [Move(m) Add(l) Move(-(m+1)) Add(n)]: Cell to 0 and Cell in position m Set at n+l
     PointerStart(Option<usize>), // if a connection exists with the PointerEnd
     PointerEnd(Option<usize>),   // if a connection exists with the PointerStart
@@ -105,7 +103,9 @@ impl Command {
                     }
                     Self::Move(_) => {
                         let (value, new_index) = Self::move_token(commands, index);
-                        tokens.push(Self::Move(value));
+                        if value != 0 {
+                            tokens.push(Self::Move(value));
+                        }
                         index = new_index;
                         continue;
                     }
@@ -188,19 +188,11 @@ impl Command {
                     start + 1,
                 ),
             },
-            Some(Self::Move(1)) => match commands.get(start + 2) {
-                Some(Self::Loop(LoopOptions::PointerEnd(_), _)) => {
-                    (Self::Loop(LoopOptions::ToRight, index_file), start + 3)
-                }
-                _ => (
-                    Self::Loop(LoopOptions::PointerStart(None), index_file),
-                    start + 1,
+            Some(Self::Move(pointer)) => match commands.get(start + 2) {
+                Some(Self::Loop(LoopOptions::PointerEnd(_), _)) => (
+                    Self::Loop(LoopOptions::MoveToCell(*pointer), index_file),
+                    start + 3,
                 ),
-            },
-            Some(Self::Move(u16::MAX)) => match commands.get(start + 2) {
-                Some(Self::Loop(LoopOptions::PointerEnd(_), _)) => {
-                    (Self::Loop(LoopOptions::ToLeft, index_file), start + 3)
-                }
                 _ => (
                     Self::Loop(LoopOptions::PointerStart(None), index_file),
                     start + 1,

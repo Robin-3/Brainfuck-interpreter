@@ -15,6 +15,10 @@ pub enum InterpreterError {
     MalformedOpenLoop(usize),
     #[error("An infinite loop has been found, at code position `{0}`, with a current value `{1}` in memory cell `{2}`")]
     InfinityLoopFound(usize, u8, usize),
+    #[error("An infinite movement loop has been found, at code position `{0}`, memory does not contain value `0`")]
+    InfinityLoopMemoryFull(usize),
+    #[error("An infinite movement loop has been found, at code position `{0}`, the pointer never stops moving, memory cell movement is `{1}`")]
+    InfinityLoopMovement(usize, u16),
     #[error("Missing arguments")]
     MissingArgs,
     #[error("Execution Error: Tokens not loaded")]
