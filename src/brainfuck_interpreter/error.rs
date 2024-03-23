@@ -9,10 +9,12 @@ pub enum InterpreterError {
     InstruccionUnknown(char),
     #[error("Cannot parse argument `{0}`: {1}")]
     ParseError(String, #[source] std::num::ParseIntError),
-    #[error("Closed loop does not match an open loop at index: {0}")]
+    #[error("Closed loop does not match an open loop at index: `{0}`")]
     MalformedClosedLoop(usize),
-    #[error("Open loop does not match a closed loop at index: {0}")]
+    #[error("Open loop does not match a closed loop at index: `{0}`")]
     MalformedOpenLoop(usize),
+    #[error("An infinite loop has been found, at code position `{0}`, with a current value `{1}` in memory cell `{2}`")]
+    InfinityLoopFound(usize, u8, usize),
     #[error("Missing arguments")]
     MissingArgs,
     #[error("Execution Error: Tokens not loaded")]

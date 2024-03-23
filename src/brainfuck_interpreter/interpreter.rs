@@ -78,7 +78,32 @@ impl Interpreter {
                         | Command::Loop(LoopOptions::PointerEnd(None), _) => {
                             return Err(InterpreterError::UnconnectedLoops)
                         }
-                        Command::Loop(LoopOptions::ResetCell, _) => memory[memory_pointer] = 0,
+                        Command::Loop(LoopOptions::Comment, index_file) => {
+                            if memory[memory_pointer] != 0 {
+                                return Err(InterpreterError::InfinityLoopFound(
+                                    *index_file,
+                                    memory[memory_pointer],
+                                    memory_pointer,
+                                ));
+                            }
+                        }
+                        Command::Loop(LoopOptions::AddToReset(add_is_even), index_file) => {
+                            let current_is_even = memory[memory_pointer] % 2 == 0;
+
+                            match (*add_is_even, current_is_even) {
+                                (true, true) => memory[memory_pointer] = 0,
+                                (false, _) => memory[memory_pointer] = 0,
+                                _ => {
+                                    return Err(InterpreterError::InfinityLoopFound(
+                                        *index_file,
+                                        memory[memory_pointer],
+                                        memory_pointer,
+                                    ))
+                                }
+                            }
+
+                            memory[memory_pointer] = 0;
+                        }
                         Command::Loop(LoopOptions::ToRight, _) => loop {
                             if memory[memory_pointer] == 0 {
                                 break;

@@ -43,10 +43,10 @@ pub enum BufferOptions {
 
 #[derive(Clone, PartialEq)]
 pub enum LoopOptions {
-    ResetCell, // [-], [+]: Cell to 0
-    // [Add(n)], n != 1 | u8::MAX
-    ToLeft,  // [<]: Pointer to memory with 0
-    ToRight, // [>]: Pointer to memory with 0
+    Comment,          // [] Comment: unimplemented
+    AddToReset(bool), // [n], n%2==1 || n%2==0&&current_value%2==0: cell to 0
+    ToLeft,           // [<]: Pointer to memory with 0
+    ToRight,          // [>]: Pointer to memory with 0
     // [Move(n)], n != 1 | u16::MAX
     // [Add(n) Move(m) Add(l) Move(-(m+1))] | [Move(m) Add(l) Move(-(m+1)) Add(n)]: Cell to 0 and Cell in position m Set at n+l
     PointerStart(Option<usize>), // if a connection exists with the PointerEnd
@@ -79,13 +79,14 @@ impl Command {
             })
             .collect();
 
-        tokens = Self::add_advanced_tokens(&tokens.clone());
+        tokens = Self::add_move_reduce_tokens(&tokens.clone());
+        tokens = Self::loop_reduce_tokens(&tokens.clone());
 
         // Return the generated tokens
         Self::loop_conection(&tokens.clone())
     }
 
-    fn add_advanced_tokens(commands: &Commands) -> Commands {
+    fn add_move_reduce_tokens(commands: &Commands) -> Commands {
         let mut tokens: Commands = Vec::with_capacity(commands.capacity());
         let mut index = 0usize;
 
@@ -96,7 +97,9 @@ impl Command {
                 Some(command) => match command {
                     Self::Add(_) => {
                         let (value, new_index) = Self::add_token(commands, index);
-                        tokens.push(Self::Add(value));
+                        if value != 0 {
+                            tokens.push(Self::Add(value));
+                        }
                         index = new_index;
                         continue;
                     }
@@ -106,6 +109,26 @@ impl Command {
                         index = new_index;
                         continue;
                     }
+                    command => tokens.push(command.clone()),
+                },
+                None => break,
+            }
+
+            index += 1;
+        }
+
+        tokens
+    }
+
+    fn loop_reduce_tokens(commands: &Commands) -> Commands {
+        let mut tokens: Commands = Vec::with_capacity(commands.capacity());
+        let mut index = 0usize;
+
+        loop {
+            let token = commands.get(index);
+
+            match token {
+                Some(command) => match command {
                     Self::Loop(LoopOptions::PointerStart(_), i) => {
                         let (value, new_index) = Self::loop_token(commands, index, *i);
                         tokens.push(value);
@@ -151,13 +174,31 @@ impl Command {
     }
 
     fn loop_token(commands: &Commands, start: usize, index_file: usize) -> (Self, usize) {
-        match commands.get(start + 2) {
-            Some(Self::Loop(LoopOptions::PointerEnd(_), _)) => match commands.get(start + 1) {
-                Some(Self::Add(1)) | Some(Self::Add(u8::MAX)) => {
-                    (Self::Loop(LoopOptions::ResetCell, index_file), start + 3)
+        match commands.get(start + 1) {
+            Some(Self::Loop(LoopOptions::PointerEnd(_), _)) => {
+                (Self::Loop(LoopOptions::Comment, index_file), start + 2)
+            }
+            Some(Self::Add(value)) => match commands.get(start + 2) {
+                Some(Self::Loop(LoopOptions::PointerEnd(_), _)) => (
+                    Self::Loop(LoopOptions::AddToReset(*value % 2 == 0), index_file), // value is even
+                    start + 3,
+                ),
+                _ => (
+                    Self::Loop(LoopOptions::PointerStart(None), index_file),
+                    start + 1,
+                ),
+            },
+            Some(Self::Move(1)) => match commands.get(start + 2) {
+                Some(Self::Loop(LoopOptions::PointerEnd(_), _)) => {
+                    (Self::Loop(LoopOptions::ToRight, index_file), start + 3)
                 }
-                Some(Self::Move(1)) => (Self::Loop(LoopOptions::ToRight, index_file), start + 3),
-                Some(Self::Move(u16::MAX)) => {
+                _ => (
+                    Self::Loop(LoopOptions::PointerStart(None), index_file),
+                    start + 1,
+                ),
+            },
+            Some(Self::Move(u16::MAX)) => match commands.get(start + 2) {
+                Some(Self::Loop(LoopOptions::PointerEnd(_), _)) => {
                     (Self::Loop(LoopOptions::ToLeft, index_file), start + 3)
                 }
                 _ => (
