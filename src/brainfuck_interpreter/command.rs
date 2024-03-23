@@ -27,7 +27,7 @@ impl CommandClassic {
                 '.' => tokens.push(Self::Output),
                 '[' => tokens.push(Self::OpenLoop(index_file + 1)),
                 ']' => tokens.push(Self::ClosedLoop(index_file + 1)),
-                char => return Err(InterpreterError::InstruccionUnknown(char)),
+                char => return Err(InterpreterError::InstruccionUnknown(char, index_file + 1)),
             }
         }
 

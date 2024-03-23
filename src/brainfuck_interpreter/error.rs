@@ -5,8 +5,8 @@ use thiserror::Error;
 pub enum InterpreterError {
     #[error("Usage: {0}")]
     SintaxisError(String),
-    #[error("Character instruction unknown: '{0}'")]
-    InstruccionUnknown(char),
+    #[error("Unknown character instruction `{0}` at code position `{1}`")]
+    InstruccionUnknown(char, usize),
     #[error("Cannot parse argument `{0}`: {1}")]
     ParseError(String, #[source] std::num::ParseIntError),
     #[error("Closed loop does not match an open loop at index: `{0}`")]
