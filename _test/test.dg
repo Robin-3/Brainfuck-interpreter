@@ -1,0 +1,26 @@
+"Caso", "Código", "Argumentos", "Salida: UTF-8", "Salida: u8", "Error"
+"Carácter desconocido" | "+i." | null | null | null | "Unknown character instruction `i` at code position `2`"
+"No se puede analizar el argumento: string" | ",," | [0, -1] | null | null | "Cannot parse argument `-1`: invalid digit found in string"
+"No se puede analizar el argumento: int" | ",," | [255, 256] | null | null | "Cannot parse argument `256`: number too large to fit in target type"
+"Lectura de argumentos: utf-8" | ",[.,]" | "🦀" | "🦀" | [240, 159, 166, 128] | null
+"Lectura de argumentos: [u8]" | ",[.,]" | [240, 159, 166, 128] | "🦀" | [240, 159, 166, 128] | null
+"Lectura de argumentos: faltantes" | "," | null | null | null | "Missing arguments"
+"Lectura de argumentos: faltantes eof" | "," | "🦀" | null | null | "Missing arguments"
+"Impresión de UTF-8 desconocido" | "-." | "�" | [255] | null
+"Loop sin pareja: cierre" | "[-]]+" | null | null | null | "Closed loop does not match an open loop at index: `4`"
+"Loop sin pareja: apertura" | "[[-]+" | null | null | null | "Open loop does not match a closed loop at index: `1`"
+"Loop infinito: comentario" | "+[]" | null | null | null | "An infinite loop has been found, at code position `2`, with a current value `1` in memory cell `0`"
+"Loop infinito: recorrido" | "+[-]" | null | "" | [] | null
+"Loop infinito: incremento indefinido" | "-[++]" | null | null | null | "An infinite loop has been found, at code position `2`, with a current value `255` in memory cell `0`"
+"Loop infinito: movimiento imposible" | "-[>+]+[>]" | null | null | null | "An infinite movement loop has been found, at code position `7`, memory does not contain value `0`"
+"Loop infinito: movimiento indefinido" | "-[>+]>[>>]" | null | null | null | "An infinite movement loop has been found, at code position `7`, the pointer never stops moving, memory cell movement is `2`"
+"brainfuck" | "+[[->]-[-<]>-]>.>>>>.<<<<-.>>-.>.<<.>>>>-.<<<<<++.>>++." | null | "brainfuck" | [98, 114, 97, 105, 110, 102, 117, 99, 107] | null
+"Tamaño de las celdas" | "++++++++[>++++++++<-]>[<++++>-]+<[>-<[>++++<-]>[<++++++++>-]<[>++++++++<-]+>[>++++++++++[>+++++<-]>+.-.[-]<<[-]<->]<[>>+++++++[>+++++++<-]>.+++++.[-]<<<-]]>[>++++++++[>+++++++<-]>.[-]<<-]<+++++++++++[>+++>+++++++++>+++++++++>+<<<<-]>-.>-.+++++++.+++++++++++." | null | "8 bit" | [56, 32, 98, 105, 116] | null
+"Codember 2023 02" | ">>>>+++++++[->+++++>>++++++<<<]>+++<<<++++++++[->++++++++<<<++++++>>],[[->->+<<]+>[<->>[->->+<<<<+>>]+<<[->+<]>>>[<->>[->->+<<<<+>>]+<<[->+<]>>>[<->[->+<]<<<<<<+>>>>>>]<[-<<<<<[->+>>>>+<<<<<]>[->>>>[->+<<<+>>]>[-<+>]<<<<<]>>[-<<<+>>>]>>[-]]>>[-<+>]<<<[->+<]]<[-<<<<[->>>>+>+<<<<<]>>>>[-<<<<+>>>>]<<<[->>>+>+<<<<]>>>[-<<<+>>>]>.[-]<]>>[-<+>]<<<[->+<]]<[-<->]>>[-<+>]<<,]" | "&##&*&@&" | "0243" | [48, 50, 52, 51] | null
+
+
+
+
+
+
+--
