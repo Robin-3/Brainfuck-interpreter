@@ -87,22 +87,22 @@ impl Interpreter {
                                 ));
                             }
                         }
-                        Command::Loop(LoopOptions::AddToReset(add_is_even), index_file) => {
-                            let current_is_even = memory[memory_pointer] % 2 == 0;
-
-                            match (*add_is_even, current_is_even) {
-                                (true, true) => memory[memory_pointer] = 0,
-                                (false, _) => memory[memory_pointer] = 0,
-                                _ => {
+                        Command::Loop(LoopOptions::AddToReset(value), index_file) => {
+                            let memory_value_start = memory[memory_pointer];
+                            loop {
+                                if memory[memory_pointer] == 0 {
+                                    break;
+                                }
+                                memory[memory_pointer] =
+                                    memory[memory_pointer].wrapping_add(*value);
+                                if memory[memory_pointer] == memory_value_start {
                                     return Err(InterpreterError::InfinityLoopFound(
                                         *index_file,
                                         memory[memory_pointer],
                                         memory_pointer,
-                                    ))
+                                    ));
                                 }
                             }
-
-                            memory[memory_pointer] = 0;
                         }
                         Command::Loop(LoopOptions::MoveToCell(pointer), index_file) => {
                             let is_not_empty = memory.iter().all(|&m| m != 0);
@@ -120,6 +120,30 @@ impl Interpreter {
                                     return Err(InterpreterError::InfinityLoopMovement(
                                         *index_file,
                                         *pointer,
+                                    ));
+                                }
+                            }
+                        }
+                        Command::Loop(
+                            LoopOptions::CutAdd(pointer, value_1, value_2),
+                            index_file,
+                        ) => {
+                            let memory_value_start = memory[memory_pointer];
+                            let pointer_momevent =
+                                (memory_pointer as u16).wrapping_add(*pointer) as usize;
+                            loop {
+                                if memory[memory_pointer] == 0 {
+                                    break;
+                                }
+                                memory[memory_pointer] =
+                                    memory[memory_pointer].wrapping_add(*value_1);
+                                memory[pointer_momevent] =
+                                    memory[pointer_momevent].wrapping_add(*value_2);
+                                if memory[memory_pointer] == memory_value_start {
+                                    return Err(InterpreterError::InfinityLoopFound(
+                                        *index_file,
+                                        memory[memory_pointer],
+                                        memory_pointer,
                                     ));
                                 }
                             }

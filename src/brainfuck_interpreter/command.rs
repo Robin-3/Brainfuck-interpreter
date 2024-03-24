@@ -43,12 +43,12 @@ pub enum BufferOptions {
 
 #[derive(Clone, PartialEq)]
 pub enum LoopOptions {
-    Comment,          // [] Comment: unimplemented
-    AddToReset(bool), // [n], n%2==1 || n%2==0&&current_value%2==0: cell to 0
-    MoveToCell(u16),  // [Move(n)]
-    // [Add(n) Move(m) Add(l) Move(-(m+1))] | [Move(m) Add(l) Move(-(m+1)) Add(n)]: Cell to 0 and Cell in position m Set at n+l
+    Comment,                     // [msg]: unimplemented
+    AddToReset(u8),              // [n]: cell to 0
+    MoveToCell(u16),             // [Move(n)]: pointer to cell with 0
+    CutAdd(u16, u8, u8), // [n Move(x) m Move(-x)] | [Move(x) n Move(-x) m]: current cell to 0 and cell in position to (current_value/n)*m
     PointerStart(Option<usize>), // if a connection exists with the PointerEnd
-    PointerEnd(Option<usize>),   // if a connection exists with the PointerStart
+    PointerEnd(Option<usize>), // if a connection exists with the PointerStart
 }
 
 // Enum to represent the Brainfuck language commands
@@ -174,30 +174,44 @@ impl Command {
     }
 
     fn loop_token(commands: &Commands, start: usize, index_file: usize) -> (Self, usize) {
-        match commands.get(start + 1) {
-            Some(Self::Loop(LoopOptions::PointerEnd(_), _)) => {
+        match (
+            commands.get(start + 1),
+            commands.get(start + 2),
+            commands.get(start + 3),
+            commands.get(start + 4),
+            commands.get(start + 5),
+        ) {
+            (Some(Self::Loop(LoopOptions::PointerEnd(_), _)), ..) => {
                 (Self::Loop(LoopOptions::Comment, index_file), start + 2)
             }
-            Some(Self::Add(value)) => match commands.get(start + 2) {
-                Some(Self::Loop(LoopOptions::PointerEnd(_), _)) => (
-                    Self::Loop(LoopOptions::AddToReset(*value % 2 == 0), index_file), // value is even
-                    start + 3,
+            (Some(Self::Add(value)), Some(Self::Loop(LoopOptions::PointerEnd(_), _)), ..) => (
+                Self::Loop(LoopOptions::AddToReset(*value), index_file), // value is even
+                start + 3,
+            ),
+            (Some(Self::Move(pointer)), Some(Self::Loop(LoopOptions::PointerEnd(_), _)), ..) => (
+                Self::Loop(LoopOptions::MoveToCell(*pointer), index_file),
+                start + 3,
+            ),
+            (
+                Some(Self::Add(value_1)),
+                Some(Self::Move(pointer_1)),
+                Some(Self::Add(value_2)),
+                Some(Self::Move(pointer_2)),
+                Some(Self::Loop(LoopOptions::PointerEnd(_), _)),
+            )
+            | (
+                Some(Self::Move(pointer_1)),
+                Some(Self::Add(value_1)),
+                Some(Self::Move(pointer_2)),
+                Some(Self::Add(value_2)),
+                Some(Self::Loop(LoopOptions::PointerEnd(_), _)),
+            ) if (*pointer_1).wrapping_add(*pointer_2) == 0 => (
+                Self::Loop(
+                    LoopOptions::CutAdd(*pointer_1, *value_1, *value_2),
+                    index_file,
                 ),
-                _ => (
-                    Self::Loop(LoopOptions::PointerStart(None), index_file),
-                    start + 1,
-                ),
-            },
-            Some(Self::Move(pointer)) => match commands.get(start + 2) {
-                Some(Self::Loop(LoopOptions::PointerEnd(_), _)) => (
-                    Self::Loop(LoopOptions::MoveToCell(*pointer), index_file),
-                    start + 3,
-                ),
-                _ => (
-                    Self::Loop(LoopOptions::PointerStart(None), index_file),
-                    start + 1,
-                ),
-            },
+                start + 6,
+            ),
             _ => (
                 Self::Loop(LoopOptions::PointerStart(None), index_file),
                 start + 1,
