@@ -46,7 +46,7 @@ pub enum LoopOptions {
     Comment,                     // [msg]: unimplemented
     AddToReset(u8),              // [n]: cell to 0
     MoveToCell(u16),             // [Move(n)]: pointer to cell with 0
-    CutAdd(u16, u8, u8), // [n Move(x) m Move(-x)] | [Move(x) n Move(-x) m]: current cell to 0 and cell in position to (current_value/n)*m
+    CutAdd(u16, u8, u8), // [n Move(x) m Move(-x)] | [Move(x) m Move(-x) n]: current cell to 0 and cell in position to (current_value/n)*m
     PointerStart(Option<usize>), // if a connection exists with the PointerEnd
     PointerEnd(Option<usize>), // if a connection exists with the PointerStart
 }
@@ -201,9 +201,9 @@ impl Command {
             )
             | (
                 Some(Self::Move(pointer_1)),
-                Some(Self::Add(value_1)),
-                Some(Self::Move(pointer_2)),
                 Some(Self::Add(value_2)),
+                Some(Self::Move(pointer_2)),
+                Some(Self::Add(value_1)),
                 Some(Self::Loop(LoopOptions::PointerEnd(_), _)),
             ) if (*pointer_1).wrapping_add(*pointer_2) == 0 => (
                 Self::Loop(
